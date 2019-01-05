@@ -4,8 +4,6 @@
   "description": "Generate a zero knowledge proof that an encrypted number is in a set",
   "main": "index.js",
   "scripts": {
-    "postinstall": "sed -i '/\\/\\/ TEST/d' index.js",
-    "test": "node index.js"
   },
   "repository": {
     "type": "git",
