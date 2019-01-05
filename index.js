@@ -1,4 +1,4 @@
-const assert = require('assert') // TEST
+//const assert = require('assert') // TEST
 const paillier = require('paillier-js')
 const bigInt = require('big-integer')
 const crypto = require('crypto')
@@ -6,18 +6,21 @@ const crypto = require('crypto')
 // rEncrypt :: Paillier.PublicKey -> Message
 // Fork from paillier-js - Create Paillier Encryption of message and return the random Paillier.R with the result
 const rEncrypt = function ({ n, g }, message) {
-  const _n2 = n.pow(2)
+  const n1 = bigInt(n.toString());
+  const g1 = bigInt(g.toString());
+  const _n2 = n1.pow(2)
   let r
   do {
-      r = bigInt.randBetween(2, n)
+      r = bigInt.randBetween(2, n1)
   } while (r.leq(1))
-  return [r, g.modPow(bigInt(message), _n2).multiply(r.modPow(n, _n2)).mod(_n2)]
+  return [r, bigInt(g1.modPow(bigInt(message), _n2.toString())).multiply(r.modPow(n1, _n2)).mod(_n2)]
 }
 
 // getCoprime :: Bits -> Number -> Number
 // Generate a coprime number of target (their GCD should be 1)
 const getCoprime = (target) => {
   const bits = Math.floor(Math.log2(target))
+  target = bigInt(target.toString())
   while (true) {
     const lowerBound = bigInt(2).pow(bits-1).plus(1)
     const size = bigInt(2).pow(bits).subtract(lowerBound)
@@ -41,20 +44,30 @@ const encryptWithProof = (publicKey, message, validMessages, bits=512) => {
 
   const [random, cipher] = rEncrypt(publicKey, message)
 
-  const om = getCoprime(publicKey.n)
-  const ap = om.modPow(publicKey.n, publicKey._n2)
+  n1 = bigInt(publicKey.n.toString());
+  _n21 = bigInt(publicKey._n2.toString());
+  g1 = bigInt(publicKey.g.toString())
+  // const om = getCoprime(publicKey.n)
+  // const ap = om.modPow(publicKey.n, publicKey._n2)
+
+  const om = getCoprime(n1)
+  const ap = om.modPow(n1, _n21)
+
 
   let mi = null
   validMessages.forEach((mk, i) => {
-    const gmk = publicKey.g.modPow(bigInt(mk), publicKey._n2)
-    const uk = cipher.times(gmk.modInv(publicKey._n2)).mod(publicKey._n2)
+    // const gmk = publicKey.g.modPow(bigInt(mk), publicKey._n2)
+    const gmk = bigInt(g1.modPow(bigInt(mk), _n21))
+    // const uk = cipher.times(gmk.modInv(publicKey._n2)).mod(publicKey._n2)
+    const uk = cipher.times(bigInt(gmk.modInv(_n21)).mod(_n21))
     if (message === mk) {
       as.push(ap)
       zs.push(null)
       es.push(null)
       mi = i
     } else {
-      const zk = getCoprime(publicKey.n)
+      // const zk = getCoprime(publicKey.n)
+      const zk = getCoprime(n1)
       zs.push(zk)
       const ek = bigInt.randBetween(2, bigInt(2).pow(bits).subtract(1));
       es.push(ek)
@@ -69,8 +82,10 @@ const encryptWithProof = (publicKey, message, validMessages, bits=512) => {
 
   const esum = es.filter(Boolean).reduce((acc, ek) => acc.plus(ek).mod(bigInt(2).pow(256)), bigInt(0))
   const ep = bigInt(hash, 16).subtract(esum).mod(bigInt(2).pow(256))
-  const rep = random.modPow(ep, publicKey.n)
-  const zp = om.times(rep).mod(publicKey.n)
+  // const rep = random.modPow(ep, publicKey.n)
+  const rep = random.modPow(ep, n1)
+  // const zp = om.times(rep).mod(publicKey.n)
+  const zp = om.times(rep).mod(n1)
   es[mi] = ep
   zs[mi] = zp
 
@@ -83,10 +98,15 @@ const encryptWithProof = (publicKey, message, validMessages, bits=512) => {
 // Verify a Zero Knowledge proof that an encrypted message is among a set of valid messages
 const verifyProof = (publicKey, cipher, [as, es, zs], validMessages) => {
   const hash = crypto.createHash('sha256').update(as.join('')).digest('hex');
+  n1 = bigInt(publicKey.n.toString())
+  g1 = bigInt(publicKey.g.toString())
+  _n21 = bigInt(publicKey._n2.toString())
 
   const us = validMessages.map(mk => {
-    const gmk = publicKey.g.modPow(mk, publicKey._n2)
-    const uk = cipher.times(gmk.modInv(publicKey._n2)).mod(publicKey._n2)
+    // const gmk = publicKey.g.modPow(mk, publicKey._n2)
+    const gmk = bigInt(g1.modPow(mk, _n21))
+    // const uk = cipher.times(gmk.modInv(publicKey._n2)).mod(publicKey._n2)
+    const uk = cipher.times(bigInt(gmk.modInv(_n21)).mod(_n21))
     return uk
   })
 
@@ -98,9 +118,12 @@ const verifyProof = (publicKey, cipher, [as, es, zs], validMessages) => {
     const ak = as[i]
     const ek = es[i]
     const uk = us[i]
-    const zkn = zk.modPow(publicKey.n, publicKey._n2)
-    const uke = uk.modPow(ek, publicKey._n2)
-    const akue = ak.times(uke).mod(publicKey._n2)
+    // const zkn = zk.modPow(publicKey.n, publicKey._n2)
+    const zkn = zk.modPow(n1, _n21)
+    // const uke = uk.modPow(ek, publicKey._n2)
+    const uke = uk.modPow(ek, _n21)
+    // const akue = ak.times(uke).mod(publicKey._n2)
+    const akue = ak.times(uke).mod(_n21)
     return zkn.eq(akue)
   })
 }
@@ -110,24 +133,24 @@ module.exports = {
   verifyProof,
 }
 
-const settings = [32,256,512,1024] // TEST
-settings.forEach(bits => { // TEST
-  { // TEST
-    const {publicKey, privateKey} = paillier.generateRandomKeys(bits) // TEST
-    const validMessages = [42,666,13] // TEST
-    const message = 42 // TEST
-    const [cipher, proof] = encryptWithProof(publicKey, message, validMessages, bits) // TEST
-    const result = verifyProof(publicKey, cipher, proof, validMessages) // TEST
-    assert.equal(privateKey.decrypt(cipher), message) // TEST
-    assert(result) // TEST
-  } // TEST
-  { // TEST
-    const {publicKey, privateKey} = paillier.generateRandomKeys(bits) // TEST
-    const validMessages = [42,666,13] // TEST
-    const evilMessage = 43 // TEST
-    const [cipher, proof] = encryptWithProof(publicKey, evilMessage, validMessages, bits) // TEST
-    const result = verifyProof(publicKey, cipher, proof, validMessages) // TEST
-    assert.equal(privateKey.decrypt(cipher), evilMessage) // TEST
-    assert(!result) // TEST
-  } // TEST
-}) // TEST
+//const settings = [32,256,512,1024] // TEST
+//settings.forEach(bits => { // TEST
+//  { // TEST
+//    const {publicKey, privateKey} = paillier.generateRandomKeys(bits) // TEST
+//    const validMessages = [42,666,13] // TEST
+//    const message = 42 // TEST
+//    const [cipher, proof] = encryptWithProof(publicKey, message, validMessages, bits) // TEST
+//    const result = verifyProof(publicKey, cipher, proof, validMessages) // TEST
+//    assert.equal(privateKey.decrypt(cipher), message) // TEST
+//    assert(result) // TEST
+ // } // TEST
+ // { // TEST
+ //   const {publicKey, privateKey} = paillier.generateRandomKeys(bits) // TEST
+ //   const validMessages = [42,666,13] // TEST
+ //   const evilMessage = 43 // TEST
+ //   const [cipher, proof] = encryptWithProof(publicKey, evilMessage, validMessages, bits) // TEST
+ //   const result = verifyProof(publicKey, cipher, proof, validMessages) // TEST
+ //   assert.equal(privateKey.decrypt(cipher), evilMessage) // TEST
+ //   assert(!result) // TEST
+ // } // TEST
+//}) // TEST
